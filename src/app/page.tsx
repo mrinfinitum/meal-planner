@@ -38,7 +38,7 @@ const nav = [
 const days = [
   { day: "Mon", date: "18", meal: "Lemon herb chicken", meta: "35 min · Family favorite", tone: "lemon", emoji: "🍋", complete: true },
   { day: "Tue", date: "19", meal: "Creamy tomato orzo", meta: "25 min · One pot", tone: "tomato", emoji: "🍅" },
-  { day: "Wed", date: "20", meal: "Salmon rice bowls", meta: "30 min · High protein", tone: "salmon", emoji: "🥑" },
+  { day: "Wed", date: "20", meal: "Salmon rice bowls", meta: "30 min · High protein", tone: "salmon", emoji: "🐟" },
   { day: "Thu", date: "21", meal: "Taco night", meta: "20 min · Kid friendly", tone: "taco", emoji: "🌮" },
 ];
 
