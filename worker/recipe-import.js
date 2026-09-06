@@ -3,6 +3,9 @@ const MAX_RECIPE_BYTES = 2_000_000;
 function json(data, init = {}) {
   const headers = new Headers(init.headers);
   headers.set("content-type", "application/json; charset=utf-8");
+  headers.set("access-control-allow-origin", "*");
+  headers.set("access-control-allow-methods", "POST, OPTIONS");
+  headers.set("access-control-allow-headers", "content-type");
   return new Response(JSON.stringify(data), { ...init, headers });
 }
 
@@ -123,6 +126,7 @@ export async function importRecipeFromUrl(value) {
 }
 
 export async function handleRecipeImport(request) {
+  if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: { "access-control-allow-origin": "*", "access-control-allow-methods": "POST, OPTIONS", "access-control-allow-headers": "content-type" } });
   if (request.method !== "POST") return json({ error: "Method not allowed." }, { status: 405 });
   try {
     const body = await request.json();

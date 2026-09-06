@@ -17,6 +17,10 @@ const nav = [
   { label: "Recipes", icon: CookingPot }, { label: "Groceries", icon: ShoppingBasket },
   { label: "Kitchen", icon: PackageOpen },
 ];
+
+const recipeImportEndpoint = process.env.NODE_ENV === "development"
+  ? "/api/recipes/import"
+  : "https://plenty-family-meals.a360usa.chatgpt.site/api/recipes/import";
 const weekdays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 const dates = [18, 19, 20, 21, 22, 23, 24];
 
@@ -107,9 +111,9 @@ export default function Home() {
     if (!importUrl.trim()) { setImportError("Paste a recipe link first."); return; }
     setImporting(true); setImportError("");
     try {
-      const response = await fetch("/api/recipes/import", { method: "POST", credentials: "include", cache: "no-store", headers: { "content-type": "application/json", accept: "application/json" }, body: JSON.stringify({ url: importUrl.trim() }) });
+      const response = await fetch(recipeImportEndpoint, { method: "POST", credentials: "omit", cache: "no-store", headers: { "content-type": "application/json", accept: "application/json" }, body: JSON.stringify({ url: importUrl.trim() }) });
       const contentType = response.headers.get("content-type") || "";
-      if (!contentType.includes("application/json")) throw new Error("Your session may have expired. Refresh the page, sign in again, and retry the import.");
+      if (!contentType.includes("application/json")) throw new Error("The recipe importer returned an unexpected response. Please try again.");
       const result = await response.json();
       if (!response.ok || !result.recipe) throw new Error(result.error || "The recipe could not be imported.");
       const imported: Recipe = { ...result.recipe, id: `imported-${Date.now()}` };
