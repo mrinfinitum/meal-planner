@@ -72,7 +72,7 @@ function aisleFor(name) {
 function parseIngredient(value) {
   const text = decodeText(value);
   const match = text.match(/^((?:(?:\d+\s+)?[\d¼½¾⅓⅔⅛⅜⅝⅞./-]+)\s*(?:cups?|tablespoons?|tbsp|teaspoons?|tsp|ounces?|oz|pounds?|lbs?|grams?|g|kilograms?|kg|cloves?|cans?|packages?|bunch(?:es)?|slices?)?)\s+(.+)$/i);
-  const name = decodeText(match?.[2] || text).replace(/^\(\s*\d+(?:\.\d+)?\s*g\s*\)\s*/i, "");
+  const name = decodeText(match?.[2] || text).replace(/^\(\s*\d+(?:\.\d+)?\s*(?:g|kg|ml|l|oz|lb|lbs)\s*\)\s*/i, "");
   return { name, amount: decodeText(match?.[1] || "1"), aisle: aisleFor(name) };
 }
 

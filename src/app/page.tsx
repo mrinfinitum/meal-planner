@@ -107,7 +107,9 @@ export default function Home() {
     if (!importUrl.trim()) { setImportError("Paste a recipe link first."); return; }
     setImporting(true); setImportError("");
     try {
-      const response = await fetch("/api/recipes/import", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ url: importUrl.trim() }) });
+      const response = await fetch("/api/recipes/import", { method: "POST", credentials: "include", cache: "no-store", headers: { "content-type": "application/json", accept: "application/json" }, body: JSON.stringify({ url: importUrl.trim() }) });
+      const contentType = response.headers.get("content-type") || "";
+      if (!contentType.includes("application/json")) throw new Error("Your session may have expired. Refresh the page, sign in again, and retry the import.");
       const result = await response.json();
       if (!response.ok || !result.recipe) throw new Error(result.error || "The recipe could not be imported.");
       const imported: Recipe = { ...result.recipe, id: `imported-${Date.now()}` };
