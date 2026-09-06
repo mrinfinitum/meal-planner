@@ -3,13 +3,13 @@
 import {
   ArrowRight, Bell, CalendarDays, Check, ChevronDown, ChevronLeft, ChevronRight,
   CircleHelp, Clock3, CookingPot, CreditCard, Heart, House, Leaf, ListChecks,
-  MoreHorizontal, PackageOpen, Plus, RefreshCw, Search, Settings, ShoppingBasket,
-  ShoppingCart, Sparkles, Trash2, Users, WandSparkles, X,
+  Link2, LoaderCircle, MoreHorizontal, PackageOpen, Plus, RefreshCw, Search,
+  Settings, ShoppingBasket, ShoppingCart, Sparkles, Trash2, Users, WandSparkles, X,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 type Ingredient = { name: string; amount: string; aisle: string };
-type Recipe = { id: string; name: string; emoji: string; tone: string; time: number; category: string; tag: string; ingredients: Ingredient[] };
+type Recipe = { id: string; name: string; emoji: string; tone: string; time: number; category: string; tag: string; ingredients: Ingredient[]; sourceUrl?: string };
 type Grocery = Ingredient & { id: string; checked: boolean };
 
 const nav = [
@@ -50,6 +50,9 @@ export default function Home() {
   const [toast, setToast] = useState("");
   const [hydrated, setHydrated] = useState(false);
   const [newItem, setNewItem] = useState("");
+  const [importUrl, setImportUrl] = useState("");
+  const [importing, setImporting] = useState(false);
+  const [importError, setImportError] = useState("");
   const [recipeForm, setRecipeForm] = useState({ name: "", time: "30", category: "Dinner", ingredients: "" });
 
   useEffect(() => {
@@ -89,6 +92,36 @@ export default function Home() {
   }
   function addCustomItem() { if (!newItem.trim()) return; setGroceries((current) => [...current, { id: `custom-${Date.now()}`, name: newItem.trim(), amount: "1", aisle: "Other", checked: false }]); setNewItem(""); }
   function quickPlan(recipeId: string) { const openDay = plan.findIndex((item) => item === null); const day = openDay >= 0 ? openDay : 0; setPlan((current) => current.map((item, index) => index === day ? recipeId : item)); const recipe = recipes.find((item) => item.id === recipeId); notify(`${recipe?.name ?? "Recipe"} added to ${weekdays[day]}`); }
+  function addIngredientsToList(ingredients: Ingredient[]) {
+    setGroceries((current) => {
+      const next = new Map(current.map((item) => [item.name.toLowerCase(), item]));
+      ingredients.forEach((ingredient) => {
+        const key = ingredient.name.toLowerCase();
+        const existing = next.get(key);
+        next.set(key, existing ? { ...existing, amount: existing.amount.includes(ingredient.amount) ? existing.amount : `${existing.amount} + ${ingredient.amount}`, checked: false } : { ...ingredient, id: `${key.replaceAll(" ", "-")}-${Date.now()}`, checked: false });
+      });
+      return Array.from(next.values());
+    });
+  }
+  async function importRecipe() {
+    if (!importUrl.trim()) { setImportError("Paste a recipe link first."); return; }
+    setImporting(true); setImportError("");
+    try {
+      const response = await fetch("/api/recipes/import", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ url: importUrl.trim() }) });
+      const result = await response.json();
+      if (!response.ok || !result.recipe) throw new Error(result.error || "The recipe could not be imported.");
+      const imported: Recipe = { ...result.recipe, id: `imported-${Date.now()}` };
+      setRecipes((current) => {
+        const existing = current.find((item) => item.sourceUrl === imported.sourceUrl);
+        return existing ? current.map((item) => item.id === existing.id ? { ...imported, id: existing.id } : item) : [...current, imported];
+      });
+      addIngredientsToList(imported.ingredients);
+      setImportUrl(""); setModalOpen(false); setActive("Groceries");
+      notify(`${imported.name} saved · ${imported.ingredients.length} ingredients added`);
+    } catch (error) {
+      setImportError(error instanceof Error ? error.message : "The recipe could not be imported.");
+    } finally { setImporting(false); }
+  }
   function addRecipe() {
     if (!recipeForm.name.trim()) return;
     const custom: Recipe = { id: `recipe-${Date.now()}`, name: recipeForm.name.trim(), emoji: "🍽️", tone: "custom", time: Number(recipeForm.time) || 30, category: recipeForm.category, tag: "My recipe", ingredients: recipeForm.ingredients.split(",").map((name) => ({ name: name.trim(), amount: "1", aisle: "Other" })).filter((item) => item.name) };
@@ -124,7 +157,7 @@ export default function Home() {
       <nav className="mobile-nav" aria-label="Mobile navigation">{nav.map(({ label, icon: Icon }) => <button key={label} className={active === label ? "active" : ""} onClick={() => setActive(label)}><Icon size={20} /><span>{label === "Meal plan" ? "Plan" : label === "Groceries" ? "List" : label}</span></button>)}</nav>
 
       {pickerDay !== null && <div className="modal-backdrop" onMouseDown={() => setPickerDay(null)}><div className="modal picker-modal" role="dialog" aria-modal="true" onMouseDown={(event) => event.stopPropagation()}><button className="modal-close" aria-label="Close" onClick={() => setPickerDay(null)}><X size={19} /></button><p className="eyebrow"><CalendarDays size={14} /> {weekdays[pickerDay]}</p><h2>Choose a meal</h2><p>Pick from your recipe collection for dinner.</p><div className="picker-list">{recipes.filter((recipe) => recipe.category === "Dinner").map((recipe) => <button key={recipe.id} onClick={() => selectMeal(recipe.id)}><span className={`picker-emoji ${recipe.tone}`}>{recipe.emoji}</span><span><strong>{recipe.name}</strong><small>{recipe.time} min · {recipe.tag}</small></span><ChevronRight size={17} /></button>)}</div></div></div>}
-      {modalOpen && <div className="modal-backdrop" onMouseDown={() => setModalOpen(false)}><div className="modal" role="dialog" aria-modal="true" aria-labelledby="recipe-modal-title" onMouseDown={(event) => event.stopPropagation()}><button className="modal-close" aria-label="Close" onClick={() => setModalOpen(false)}><X size={19} /></button><div className="modal-icon"><CookingPot size={24} /></div><p className="eyebrow">Recipe collection</p><h2 id="recipe-modal-title">Add something delicious</h2><p>Create a recipe for your family collection. You can add quantities later.</p><div className="recipe-form"><label>Recipe name<input autoFocus value={recipeForm.name} onChange={(event) => setRecipeForm({...recipeForm,name:event.target.value})} placeholder="e.g. Grandma’s lasagna" /></label><div><label>Time<input type="number" value={recipeForm.time} onChange={(event) => setRecipeForm({...recipeForm,time:event.target.value})} /></label><label>Category<select value={recipeForm.category} onChange={(event) => setRecipeForm({...recipeForm,category:event.target.value})}><option>Dinner</option><option>Lunch</option><option>Breakfast</option></select></label></div><label>Ingredients<input value={recipeForm.ingredients} onChange={(event) => setRecipeForm({...recipeForm,ingredients:event.target.value})} placeholder="Tomatoes, pasta, basil..." /></label></div><div className="modal-actions"><button className="secondary-button" onClick={() => setModalOpen(false)}>Cancel</button><button className="primary-button" onClick={addRecipe}>Save recipe</button></div></div></div>}
+      {modalOpen && <div className="modal-backdrop" onMouseDown={() => setModalOpen(false)}><div className="modal recipe-modal" role="dialog" aria-modal="true" aria-labelledby="recipe-modal-title" onMouseDown={(event) => event.stopPropagation()}><button className="modal-close" aria-label="Close" onClick={() => setModalOpen(false)}><X size={19} /></button><div className="modal-icon"><CookingPot size={24} /></div><p className="eyebrow">Recipe collection</p><h2 id="recipe-modal-title">Add something delicious</h2><p>Import a recipe from the web and we’ll build its shopping list automatically.</p><form className="url-import-form" onSubmit={(event) => { event.preventDefault(); importRecipe(); }}><label>Recipe URL<div><Link2 size={17} /><input autoFocus type="url" value={importUrl} onChange={(event) => setImportUrl(event.target.value)} placeholder="https://example.com/favorite-recipe" /></div></label>{importError && <p className="import-error" role="alert">{importError}</p>}<button className="import-button" disabled={importing} type="submit">{importing ? <><LoaderCircle className="is-spinning" size={16} /> Reading recipe…</> : <><WandSparkles size={16} /> Import recipe & ingredients</>}</button></form><div className="form-divider"><span>or add it manually</span></div><div className="recipe-form"><label>Recipe name<input value={recipeForm.name} onChange={(event) => setRecipeForm({...recipeForm,name:event.target.value})} placeholder="e.g. Grandma’s lasagna" /></label><div><label>Time<input type="number" value={recipeForm.time} onChange={(event) => setRecipeForm({...recipeForm,time:event.target.value})} /></label><label>Category<select value={recipeForm.category} onChange={(event) => setRecipeForm({...recipeForm,category:event.target.value})}><option>Dinner</option><option>Lunch</option><option>Breakfast</option><option>Dessert</option><option>Snack</option></select></label></div><label>Ingredients<input value={recipeForm.ingredients} onChange={(event) => setRecipeForm({...recipeForm,ingredients:event.target.value})} placeholder="Tomatoes, pasta, basil..." /></label></div><div className="modal-actions"><button className="secondary-button" onClick={() => setModalOpen(false)}>Cancel</button><button className="primary-button" onClick={addRecipe}>Save manually</button></div></div></div>}
       {toast && <div className="toast"><Check size={16} />{toast}</div>}
     </div>
   );
@@ -147,7 +180,7 @@ function MealPlanner({ plan, plannedRecipes, weekLabel, setWeek, setPickerDay, g
 }
 
 function RecipeLibrary({ recipes, total, query, setQuery, category, setCategory, setModalOpen, quickPlan }: { recipes:Recipe[]; total:number; query:string; setQuery:(v:string)=>void; category:string; setCategory:(v:string)=>void; setModalOpen:(v:boolean)=>void; quickPlan:(id:string)=>void }) {
-  return <><PageHeader eyebrow="Recipe database" title="Your family cookbook" copy={`${total} recipes saved and ready to plan.`}><button className="primary-button desktop-add" onClick={()=>setModalOpen(true)}><Plus size={17}/>Add new recipe</button></PageHeader><div className="library-toolbar"><div className="library-search"><Search size={17}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search your recipes..."/></div><div className="filter-pills">{["All","Dinner","Lunch","Breakfast"].map(item=><button key={item} className={category===item?"active":""} onClick={()=>setCategory(item)}>{item}</button>)}</div></div><div className="recipe-grid">{recipes.map(recipe=><article className="recipe-card" key={recipe.id}><div className={`recipe-cover ${recipe.tone}`}><span>{recipe.emoji}</span><button aria-label="Favorite recipe"><Heart size={17}/></button><em>{recipe.category}</em></div><div className="recipe-card-copy"><h3>{recipe.name}</h3><p><Clock3 size={14}/>{recipe.time} min <span>•</span> {recipe.ingredients.length} ingredients</p><div><span>{recipe.tag}</span><button onClick={()=>quickPlan(recipe.id)}><Plus size={14}/>Plan</button></div></div></article>)}</div>{recipes.length===0&&<div className="empty-state"><Search size={28}/><h3>No recipes found</h3><p>Try another search or add a new family favorite.</p></div>}</>;
+  return <><PageHeader eyebrow="Recipe database" title="Your family cookbook" copy={`${total} recipes saved and ready to plan.`}><button className="primary-button desktop-add" onClick={()=>setModalOpen(true)}><Plus size={17}/>Add new recipe</button></PageHeader><div className="library-toolbar"><div className="library-search"><Search size={17}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search your recipes..."/></div><div className="filter-pills">{["All","Dinner","Lunch","Breakfast","Dessert"].map(item=><button key={item} className={category===item?"active":""} onClick={()=>setCategory(item)}>{item}</button>)}</div></div><div className="recipe-grid">{recipes.map(recipe=><article className="recipe-card" key={recipe.id}><div className={`recipe-cover ${recipe.tone}`}><span>{recipe.emoji}</span><button aria-label="Favorite recipe"><Heart size={17}/></button><em>{recipe.category}</em></div><div className="recipe-card-copy"><h3>{recipe.name}</h3><p><Clock3 size={14}/>{recipe.time} min <span>•</span> {recipe.ingredients.length} ingredients</p><div><span>{recipe.tag}</span><button onClick={()=>quickPlan(recipe.id)}><Plus size={14}/>Plan</button></div></div></article>)}</div>{recipes.length===0&&<div className="empty-state"><Search size={28}/><h3>No recipes found</h3><p>Try another search or add a new family favorite.</p></div>}</>;
 }
 
 function GroceryList({ groceries, groups, checkedCount, generateGroceries, setGroceries, newItem, setNewItem, addCustomItem, notify }: { groceries:Grocery[]; groups:[string,Grocery[]][]; checkedCount:number; generateGroceries:()=>void; setGroceries:React.Dispatch<React.SetStateAction<Grocery[]>>; newItem:string; setNewItem:(v:string)=>void; addCustomItem:()=>void; notify:(v:string)=>void }) {
