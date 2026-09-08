@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://plenty-family-meals.a360usa.chatgpt.site"),
+  metadataBase: new URL("https://meal-planner-coral-one.vercel.app"),
   title: "Plenty — Your family meal planner",
   description: "Plan meals, track your kitchen, and shop smarter with one beautifully organized family hub.",
   openGraph: {

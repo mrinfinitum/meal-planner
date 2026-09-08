@@ -4,9 +4,12 @@ import {
   ArrowRight, Bell, CalendarDays, Check, ChevronDown, ChevronLeft, ChevronRight,
   CircleHelp, Clock3, CookingPot, CreditCard, Heart, House, Leaf, ListChecks,
   Link2, LoaderCircle, MoreHorizontal, PackageOpen, Plus, RefreshCw, Search,
-  Settings, ShoppingBasket, ShoppingCart, Sparkles, Trash2, Users, WandSparkles, X,
+  LogOut, Settings, ShoppingBasket, ShoppingCart, Sparkles, Trash2, Users, WandSparkles, X,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+
+import { authClient } from "@/lib/auth/client";
 
 type Ingredient = { name: string; amount: string; aisle: string };
 type Recipe = { id: string; name: string; emoji: string; tone: string; time: number; category: string; tag: string; ingredients: Ingredient[]; sourceUrl?: string };
@@ -18,9 +21,6 @@ const nav = [
   { label: "Kitchen", icon: PackageOpen },
 ];
 
-const recipeImportEndpoint = process.env.NODE_ENV === "development"
-  ? "/api/recipes/import"
-  : "https://plenty-family-meals.a360usa.chatgpt.site/api/recipes/import";
 const weekdays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 const dates = [18, 19, 20, 21, 22, 23, 24];
 
@@ -42,6 +42,8 @@ const inventory = [
 ];
 
 export default function Home() {
+  const router = useRouter();
+  const { data: session } = authClient.useSession();
   const [active, setActive] = useState("Overview");
   const [week, setWeek] = useState(0);
   const [recipes, setRecipes] = useState<Recipe[]>(seedRecipes);
@@ -58,6 +60,29 @@ export default function Home() {
   const [importing, setImporting] = useState(false);
   const [importError, setImportError] = useState("");
   const [recipeForm, setRecipeForm] = useState({ name: "", time: "30", category: "Dinner", ingredients: "" });
+  const [householdName, setHouseholdName] = useState("My household");
+  const [remoteReady, setRemoteReady] = useState(false);
+
+  useEffect(() => {
+    if (!session?.user) return;
+    fetch("/api/household/bootstrap", { method: "POST" })
+      .then((response) => response.ok ? response.json() : null)
+      .then((result) => {
+        if (!result) return;
+        if (result.household?.name) setHouseholdName(result.household.name);
+        if (Array.isArray(result.recipes)) {
+          setRecipes((current) => {
+            const merged = new Map(current.map((recipe) => [recipe.id, recipe]));
+            result.recipes.forEach((recipe: Recipe) => merged.set(recipe.id, recipe));
+            return Array.from(merged.values());
+          });
+        }
+        if (Array.isArray(result.plan) && result.plan.length === 7) setPlan(result.plan);
+        if (Array.isArray(result.groceries) && result.groceries.length > 0) setGroceries(result.groceries);
+        setRemoteReady(true);
+      })
+      .catch(() => { /* The dashboard stays usable while a temporary connection recovers. */ });
+  }, [session?.user]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -77,6 +102,20 @@ export default function Home() {
   useEffect(() => { if (hydrated) localStorage.setItem("plenty-recipes", JSON.stringify(recipes)); }, [recipes, hydrated]);
   useEffect(() => { if (hydrated) localStorage.setItem("plenty-plan", JSON.stringify(plan)); }, [plan, hydrated]);
   useEffect(() => { if (hydrated) localStorage.setItem("plenty-groceries", JSON.stringify(groceries)); }, [groceries, hydrated]);
+  useEffect(() => {
+    if (!remoteReady) return;
+    const timer = window.setTimeout(() => {
+      fetch("/api/meal-plan", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ plan }) }).catch(() => {});
+    }, 450);
+    return () => window.clearTimeout(timer);
+  }, [plan, remoteReady]);
+  useEffect(() => {
+    if (!remoteReady) return;
+    const timer = window.setTimeout(() => {
+      fetch("/api/shopping-list", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ items: groceries }) }).catch(() => {});
+    }, 450);
+    return () => window.clearTimeout(timer);
+  }, [groceries, remoteReady]);
 
   const weekLabel = week === 0 ? "August 18–24" : week < 0 ? "August 11–17" : "August 25–31";
   const plannedRecipes = plan.map((id) => recipes.find((recipe) => recipe.id === id));
@@ -111,12 +150,12 @@ export default function Home() {
     if (!importUrl.trim()) { setImportError("Paste a recipe link first."); return; }
     setImporting(true); setImportError("");
     try {
-      const response = await fetch(recipeImportEndpoint, { method: "POST", credentials: "omit", cache: "no-store", headers: { "content-type": "application/json", accept: "application/json" }, body: JSON.stringify({ url: importUrl.trim() }) });
+      const response = await fetch("/api/recipes/import", { method: "POST", credentials: "same-origin", cache: "no-store", headers: { "content-type": "application/json", accept: "application/json" }, body: JSON.stringify({ url: importUrl.trim() }) });
       const contentType = response.headers.get("content-type") || "";
       if (!contentType.includes("application/json")) throw new Error("The recipe importer returned an unexpected response. Please try again.");
       const result = await response.json();
       if (!response.ok || !result.recipe) throw new Error(result.error || "The recipe could not be imported.");
-      const imported: Recipe = { ...result.recipe, id: `imported-${Date.now()}` };
+      const imported: Recipe = result.recipe;
       setRecipes((current) => {
         const existing = current.find((item) => item.sourceUrl === imported.sourceUrl);
         return existing ? current.map((item) => item.id === existing.id ? { ...imported, id: existing.id } : item) : [...current, imported];
@@ -128,10 +167,19 @@ export default function Home() {
       setImportError(error instanceof Error ? error.message : "The recipe could not be imported.");
     } finally { setImporting(false); }
   }
-  function addRecipe() {
+  async function addRecipe() {
     if (!recipeForm.name.trim()) return;
     const custom: Recipe = { id: `recipe-${Date.now()}`, name: recipeForm.name.trim(), emoji: "🍽️", tone: "custom", time: Number(recipeForm.time) || 30, category: recipeForm.category, tag: "My recipe", ingredients: recipeForm.ingredients.split(",").map((name) => ({ name: name.trim(), amount: "1", aisle: "Other" })).filter((item) => item.name) };
-    setRecipes((current) => [...current, custom]); setRecipeForm({ name: "", time: "30", category: "Dinner", ingredients: "" }); setModalOpen(false); setActive("Recipes"); notify("Recipe saved to your collection");
+    try {
+      const response = await fetch("/api/recipes", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(custom) });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "The recipe could not be saved.");
+      setRecipes((current) => [...current, result.recipe]);
+      addIngredientsToList(result.recipe.ingredients);
+      setRecipeForm({ name: "", time: "30", category: "Dinner", ingredients: "" }); setModalOpen(false); setActive("Recipes"); notify("Recipe saved to your collection");
+    } catch (error) {
+      setImportError(error instanceof Error ? error.message : "The recipe could not be saved.");
+    }
   }
 
   return (
@@ -139,8 +187,8 @@ export default function Home() {
       <aside className="sidebar">
         <div className="brand"><div className="brand-mark"><Leaf size={19} strokeWidth={2.6} /></div><span>plenty.</span></div>
         <nav className="side-nav" aria-label="Primary navigation"><p className="nav-label">Workspace</p>{nav.map(({ label, icon: Icon }) => <button key={label} className={`nav-item ${active === label ? "active" : ""}`} onClick={() => setActive(label)}><Icon size={18} /><span>{label}</span>{label === "Groceries" && groceries.length > 0 && <span className="nav-count">{groceries.length}</span>}</button>)}</nav>
-        <div className="household-card"><div className="household-icon"><Users size={18} /></div><div><strong>The Parkers</strong><span>4 family members</span></div><ChevronDown size={16} /></div>
-        <div className="sidebar-bottom"><button className="nav-item"><CircleHelp size={18} /><span>Help & support</span></button><button className="nav-item"><Settings size={18} /><span>Settings</span></button><div className="profile"><div className="avatar">GP</div><div><strong>Geoff Parker</strong><span>Family admin</span></div><MoreHorizontal size={18} /></div></div>
+        <div className="household-card"><div className="household-icon"><Users size={18} /></div><div><strong>{householdName}</strong><span>Private family workspace</span></div><ChevronDown size={16} /></div>
+        <div className="sidebar-bottom"><button className="nav-item"><CircleHelp size={18} /><span>Help & support</span></button><button className="nav-item"><Settings size={18} /><span>Settings</span></button><div className="profile"><div className="avatar">{(session?.user?.name ?? session?.user?.email ?? "P").split(/\s|@/).slice(0,2).map((part) => part[0]).join("").toUpperCase()}</div><div><strong>{session?.user?.name ?? "Plenty member"}</strong><span>{session?.user?.email ?? "Family admin"}</span></div><button className="account-button" aria-label="Sign out" title="Sign out" onClick={async () => { await authClient.signOut(); router.replace("/auth/sign-in"); router.refresh(); }}><LogOut size={17} /></button></div></div>
       </aside>
 
       <main className="main">

@@ -1,8 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  output: "export",
-  distDir: "dist",
+  ...(process.env.OPENAI_SITES_BUILD === "1" ? { output: "export" as const, distDir: "dist" } : {}),
   reactCompiler: true,
 };
 
