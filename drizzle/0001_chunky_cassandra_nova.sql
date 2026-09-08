@@ -1,0 +1,1 @@
+ALTER TABLE "household_members" ADD COLUMN "app_role" text DEFAULT 'user' NOT NULL;

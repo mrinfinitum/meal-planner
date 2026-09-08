@@ -31,6 +31,7 @@ export const householdMembers = pgTable("household_members", {
   email: text("email"),
   displayName: text("display_name"),
   role: text("role").notNull().default("admin"),
+  appRole: text("app_role").notNull().default("user"),
   ...timestamps,
 }, (table) => [
   uniqueIndex("household_members_user_id_unique").on(table.userId),

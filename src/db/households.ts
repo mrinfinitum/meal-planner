@@ -3,6 +3,7 @@ import "server-only";
 import { and, asc, eq } from "drizzle-orm";
 
 import { db } from "./index";
+import { isAppAdmin } from "@/lib/auth/admin";
 import {
   householdMembers,
   households,
@@ -126,16 +127,25 @@ async function seedHousehold(
 }
 
 export async function ensureHouseholdForUser(user: AuthUser) {
+  const appRole = isAppAdmin(user.email) ? "admin" : "user";
   const [existing] = await db.select({
     id: households.id,
     name: households.name,
     role: householdMembers.role,
+    appRole: householdMembers.appRole,
   }).from(householdMembers)
     .innerJoin(households, eq(householdMembers.householdId, households.id))
     .where(eq(householdMembers.userId, user.id))
     .limit(1);
 
-  if (existing) return existing;
+  if (existing) {
+    if (existing.appRole !== appRole) {
+      await db.update(householdMembers)
+        .set({ appRole, email: user.email, displayName: user.name, updatedAt: new Date() })
+        .where(eq(householdMembers.userId, user.id));
+    }
+    return { ...existing, appRole };
+  }
 
   return db.transaction(async (transaction) => {
     const firstName = user.name?.trim().split(/\s+/)[0];
@@ -149,10 +159,11 @@ export async function ensureHouseholdForUser(user: AuthUser) {
       email: user.email,
       displayName: user.name,
       role: "admin",
+      appRole,
     });
 
     await seedHousehold(transaction, household.id, user.id);
-    return { ...household, role: "admin" };
+    return { ...household, role: "admin", appRole };
   });
 }
 

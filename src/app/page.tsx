@@ -61,6 +61,7 @@ export default function Home() {
   const [importError, setImportError] = useState("");
   const [recipeForm, setRecipeForm] = useState({ name: "", time: "30", category: "Dinner", ingredients: "" });
   const [householdName, setHouseholdName] = useState("My household");
+  const [accountRole, setAccountRole] = useState("Family admin");
   const [remoteReady, setRemoteReady] = useState(false);
 
   useEffect(() => {
@@ -70,6 +71,9 @@ export default function Home() {
       .then((result) => {
         if (!result) return;
         if (result.household?.name) setHouseholdName(result.household.name);
+        if (result.household?.appRole === "admin") setAccountRole("App admin");
+        else if (result.household?.role === "admin") setAccountRole("Family admin");
+        else setAccountRole("Household member");
         if (Array.isArray(result.recipes)) {
           setRecipes((current) => {
             const merged = new Map(current.map((recipe) => [recipe.id, recipe]));
@@ -188,7 +192,7 @@ export default function Home() {
         <div className="brand"><div className="brand-mark"><Leaf size={19} strokeWidth={2.6} /></div><span>plenty.</span></div>
         <nav className="side-nav" aria-label="Primary navigation"><p className="nav-label">Workspace</p>{nav.map(({ label, icon: Icon }) => <button key={label} className={`nav-item ${active === label ? "active" : ""}`} onClick={() => setActive(label)}><Icon size={18} /><span>{label}</span>{label === "Groceries" && groceries.length > 0 && <span className="nav-count">{groceries.length}</span>}</button>)}</nav>
         <div className="household-card"><div className="household-icon"><Users size={18} /></div><div><strong>{householdName}</strong><span>Private family workspace</span></div><ChevronDown size={16} /></div>
-        <div className="sidebar-bottom"><button className="nav-item"><CircleHelp size={18} /><span>Help & support</span></button><button className="nav-item"><Settings size={18} /><span>Settings</span></button><div className="profile"><div className="avatar">{(session?.user?.name ?? session?.user?.email ?? "P").split(/\s|@/).slice(0,2).map((part) => part[0]).join("").toUpperCase()}</div><div><strong>{session?.user?.name ?? "Plenty member"}</strong><span>{session?.user?.email ?? "Family admin"}</span></div><button className="account-button" aria-label="Sign out" title="Sign out" onClick={async () => { await authClient.signOut(); router.replace("/auth/sign-in"); router.refresh(); }}><LogOut size={17} /></button></div></div>
+        <div className="sidebar-bottom"><button className="nav-item"><CircleHelp size={18} /><span>Help & support</span></button><button className="nav-item"><Settings size={18} /><span>Settings</span></button><div className="profile"><div className="avatar">{(session?.user?.name ?? session?.user?.email ?? "P").split(/\s|@/).slice(0,2).map((part) => part[0]).join("").toUpperCase()}</div><div><strong>{session?.user?.name ?? "Plenty member"}</strong><span title={session?.user?.email ?? undefined}>{accountRole}</span></div><button className="account-button" aria-label="Sign out" title="Sign out" onClick={async () => { await authClient.signOut(); router.replace("/auth/sign-in"); router.refresh(); }}><LogOut size={17} /></button></div></div>
       </aside>
 
       <main className="main">
