@@ -6,6 +6,7 @@ import { db } from "./index";
 import { isAppAdmin } from "@/lib/auth/admin";
 import {
   householdMembers,
+  householdInvitations,
   households,
   ingredients,
   mealPlanEntries,
@@ -145,6 +146,34 @@ export async function ensureHouseholdForUser(user: AuthUser) {
         .where(eq(householdMembers.userId, user.id));
     }
     return { ...existing, appRole };
+  }
+
+  const normalizedEmail = user.email?.trim().toLowerCase();
+  if (normalizedEmail) {
+    const [invitation] = await db.select({
+      id: householdInvitations.id,
+      householdId: householdInvitations.householdId,
+      householdName: households.name,
+      role: householdInvitations.role,
+    }).from(householdInvitations)
+      .innerJoin(households, eq(householdInvitations.householdId, households.id))
+      .where(eq(householdInvitations.email, normalizedEmail))
+      .limit(1);
+
+    if (invitation) {
+      return db.transaction(async (transaction) => {
+        await transaction.insert(householdMembers).values({
+          householdId: invitation.householdId,
+          userId: user.id,
+          email: normalizedEmail,
+          displayName: user.name,
+          role: invitation.role,
+          appRole,
+        });
+        await transaction.delete(householdInvitations).where(eq(householdInvitations.id, invitation.id));
+        return { id: invitation.householdId, name: invitation.householdName, role: invitation.role, appRole };
+      });
+    }
   }
 
   return db.transaction(async (transaction) => {

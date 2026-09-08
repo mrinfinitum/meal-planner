@@ -38,6 +38,18 @@ export const householdMembers = pgTable("household_members", {
   index("household_members_household_id_idx").on(table.householdId),
 ]);
 
+export const householdInvitations = pgTable("household_invitations", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  householdId: uuid("household_id").notNull().references(() => households.id, { onDelete: "cascade" }),
+  email: text("email").notNull(),
+  role: text("role").notNull().default("member"),
+  invitedBy: text("invited_by").notNull(),
+  ...timestamps,
+}, (table) => [
+  uniqueIndex("household_invitations_household_email_unique").on(table.householdId, table.email),
+  index("household_invitations_email_idx").on(table.email),
+]);
+
 export const recipes = pgTable("recipes", {
   id: uuid("id").primaryKey().defaultRandom(),
   householdId: uuid("household_id").notNull().references(() => households.id, { onDelete: "cascade" }),
@@ -164,4 +176,17 @@ export const retailerCartExports = pgTable("retailer_cart_exports", {
   ...timestamps,
 }, (table) => [
   index("retailer_cart_exports_list_idx").on(table.shoppingListId),
+]);
+
+export const externalConnections = pgTable("external_connections", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  householdId: uuid("household_id").notNull().references(() => households.id, { onDelete: "cascade" }),
+  provider: text("provider").notNull(),
+  status: text("status").notNull().default("disabled"),
+  accountLabel: text("account_label"),
+  metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
+  lastTestedAt: timestamp("last_tested_at", { withTimezone: true }),
+  ...timestamps,
+}, (table) => [
+  uniqueIndex("external_connections_household_provider_unique").on(table.householdId, table.provider),
 ]);

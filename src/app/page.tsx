@@ -4,11 +4,13 @@ import {
   ArrowRight, Bell, CalendarDays, Check, ChevronDown, ChevronLeft, ChevronRight,
   CircleHelp, Clock3, CookingPot, CreditCard, Heart, House, Leaf, ListChecks,
   Link2, LoaderCircle, MoreHorizontal, PackageOpen, Plus, RefreshCw, Search,
-  LogOut, Settings, ShoppingBasket, ShoppingCart, Sparkles, Trash2, Users, WandSparkles, X,
+  LogOut, Settings, ShieldCheck, ShoppingBasket, ShoppingCart, Sparkles, Trash2, Users, WandSparkles, X,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
+import { AdminPanel } from "@/components/admin-panel";
+import { SettingsPanel } from "@/components/settings-panel";
 import { authClient } from "@/lib/auth/client";
 
 type Ingredient = { name: string; amount: string; aisle: string };
@@ -63,6 +65,20 @@ export default function Home() {
   const [householdName, setHouseholdName] = useState("My household");
   const [accountRole, setAccountRole] = useState("Family admin");
   const [remoteReady, setRemoteReady] = useState(false);
+
+  const refreshHouseholdState = useCallback(async () => {
+    const response = await fetch("/api/household/bootstrap", { method: "POST" });
+    if (!response.ok) return;
+    const result = await response.json();
+    if (result.household?.name) setHouseholdName(result.household.name);
+    if (result.household?.appRole === "admin") setAccountRole("App admin");
+    else if (result.household?.role === "admin") setAccountRole("Family admin");
+    else setAccountRole("Household member");
+    if (Array.isArray(result.recipes)) setRecipes(result.recipes);
+    if (Array.isArray(result.plan) && result.plan.length === 7) setPlan(result.plan);
+    if (Array.isArray(result.groceries)) setGroceries(result.groceries);
+    setRemoteReady(true);
+  }, []);
 
   useEffect(() => {
     if (!session?.user) return;
@@ -190,17 +206,18 @@ export default function Home() {
     <div className="app-shell">
       <aside className="sidebar">
         <div className="brand"><div className="brand-mark"><Leaf size={19} strokeWidth={2.6} /></div><span>plenty.</span></div>
-        <nav className="side-nav" aria-label="Primary navigation"><p className="nav-label">Workspace</p>{nav.map(({ label, icon: Icon }) => <button key={label} className={`nav-item ${active === label ? "active" : ""}`} onClick={() => setActive(label)}><Icon size={18} /><span>{label}</span>{label === "Groceries" && groceries.length > 0 && <span className="nav-count">{groceries.length}</span>}</button>)}</nav>
+        <nav className="side-nav" aria-label="Primary navigation"><p className="nav-label">Workspace</p>{nav.map(({ label, icon: Icon }) => <button key={label} className={`nav-item ${active === label ? "active" : ""}`} onClick={() => setActive(label)}><Icon size={18} /><span>{label}</span>{label === "Groceries" && groceries.length > 0 && <span className="nav-count">{groceries.length}</span>}</button>)}{accountRole === "App admin" && <button className={`nav-item ${active === "Admin" ? "active" : ""}`} onClick={() => setActive("Admin")}><ShieldCheck size={18}/><span>Admin</span></button>}</nav>
         <div className="household-card"><div className="household-icon"><Users size={18} /></div><div><strong>{householdName}</strong><span>Private family workspace</span></div><ChevronDown size={16} /></div>
-        <div className="sidebar-bottom"><button className="nav-item"><CircleHelp size={18} /><span>Help & support</span></button><button className="nav-item"><Settings size={18} /><span>Settings</span></button><div className="profile"><div className="avatar">{(session?.user?.name ?? session?.user?.email ?? "P").split(/\s|@/).slice(0,2).map((part) => part[0]).join("").toUpperCase()}</div><div><strong>{session?.user?.name ?? "Plenty member"}</strong><span title={session?.user?.email ?? undefined}>{accountRole}</span></div><button className="account-button" aria-label="Sign out" title="Sign out" onClick={async () => { await authClient.signOut(); router.replace("/auth/sign-in"); router.refresh(); }}><LogOut size={17} /></button></div></div>
+        <div className="sidebar-bottom"><button className="nav-item"><CircleHelp size={18} /><span>Help & support</span></button><button className={`nav-item ${active === "Settings" ? "active" : ""}`} onClick={() => setActive("Settings")}><Settings size={18} /><span>Settings</span></button><div className="profile"><div className="avatar">{(session?.user?.name ?? session?.user?.email ?? "P").split(/\s|@/).slice(0,2).map((part) => part[0]).join("").toUpperCase()}</div><div><strong>{session?.user?.name ?? "Plenty member"}</strong><span title={session?.user?.email ?? undefined}>{accountRole}</span></div><button className="account-button" aria-label="Sign out" title="Sign out" onClick={async () => { await authClient.signOut(); router.replace("/auth/sign-in"); router.refresh(); }}><LogOut size={17} /></button></div></div>
       </aside>
 
       <main className="main">
         <header className="topbar">
           <div className="mobile-brand"><div className="brand-mark"><Leaf size={17} /></div><span>plenty.</span></div>
           <div className="search-wrap"><Search size={18} /><input aria-label="Search recipes" value={query} onChange={(event) => setQuery(event.target.value)} onFocus={() => active !== "Recipes" && setActive("Recipes")} placeholder="Search recipes, ingredients..." /><kbd>⌘ K</kbd></div>
+          <button className="mobile-settings-button" aria-label="Open settings" onClick={() => setActive("Settings")}><Settings size={19}/></button>
           <button className="icon-button" aria-label="Notifications"><Bell size={19} /><i /></button>
-          <button className="primary-button" onClick={() => setModalOpen(true)}><Plus size={18} /> <span>Add recipe</span></button>
+          {active !== "Settings" && active !== "Admin" && <button className="primary-button" onClick={() => setModalOpen(true)}><Plus size={18} /> <span>Add recipe</span></button>}
         </header>
 
         <div className="page-content">
@@ -209,6 +226,10 @@ export default function Home() {
           {active === "Recipes" && <RecipeLibrary recipes={filteredRecipes} total={recipes.length} query={query} setQuery={setQuery} category={category} setCategory={setCategory} setModalOpen={setModalOpen} quickPlan={quickPlan} />}
           {active === "Groceries" && <GroceryList groceries={groceries} groups={groceryGroups} checkedCount={checkedCount} generateGroceries={generateGroceries} setGroceries={setGroceries} newItem={newItem} setNewItem={setNewItem} addCustomItem={addCustomItem} notify={notify} />}
           {active === "Kitchen" && <KitchenView notify={notify} />}
+          {active === "Settings" && <SettingsPanel currentUserId={session?.user?.id} email={session?.user?.email} initialName={session?.user?.name} initialHouseholdName={householdName} onHouseholdNameChange={setHouseholdName} onOpenAdmin={() => setActive("Admin")}/>}
+          {active === "Admin" && accountRole === "App admin" && (
+            <AdminPanel onLibraryChanged={() => { refreshHouseholdState().catch(() => {}); }}/>
+          )}
         </div>
       </main>
 
